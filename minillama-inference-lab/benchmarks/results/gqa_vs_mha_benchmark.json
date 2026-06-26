@@ -1,0 +1,30 @@
+{
+  "prompt": "Once upon a time",
+  "max_new_tokens": 32,
+  "mha": {
+    "n_heads": 4,
+    "n_kv_heads": 4,
+    "param_count": 459392,
+    "kv_cache_elements": 24576,
+    "latency_ms": 238.946,
+    "tokens_per_second": 133.922,
+    "runs_latency_ms": [
+      297.948,
+      238.946,
+      184.19
+    ]
+  },
+  "gqa": {
+    "n_heads": 4,
+    "n_kv_heads": 2,
+    "param_count": 426624,
+    "kv_cache_elements": 12288,
+    "latency_ms": 194.186,
+    "tokens_per_second": 164.79,
+    "runs_latency_ms": [
+      203.303,
+      194.186,
+      150.756
+    ]
+  }
+}

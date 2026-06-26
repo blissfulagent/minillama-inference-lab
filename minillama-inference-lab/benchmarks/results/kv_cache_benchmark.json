@@ -1,0 +1,27 @@
+{
+  "prompt": "Once upon a time",
+  "max_new_tokens": 32,
+  "no_cache": {
+    "latency_ms": 257.214,
+    "tokens_generated": 32,
+    "tokens_per_second": 124.41,
+    "used_kv_cache": false,
+    "runs_latency_ms": [
+      252.249,
+      270.385,
+      257.214
+    ]
+  },
+  "kv_cache": {
+    "latency_ms": 197.086,
+    "tokens_generated": 32,
+    "tokens_per_second": 162.366,
+    "used_kv_cache": true,
+    "runs_latency_ms": [
+      214.714,
+      196.54,
+      197.086
+    ]
+  },
+  "speedup": 1.3051
+}
