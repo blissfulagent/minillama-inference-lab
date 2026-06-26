@@ -21,6 +21,14 @@ class TransformerBlock(nn.Module):
         cos: torch.Tensor,
         sin: torch.Tensor,
         mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        h = x + self.attention(self.attention_norm(x), cos, sin, mask)
+        past_kv: tuple[torch.Tensor, torch.Tensor] | None = None,
+        return_kv: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        if return_kv:
+            attn_out, kv = self.attention(
+                self.attention_norm(x), cos, sin, mask, past_kv=past_kv, return_kv=True
+            )
+            h = x + attn_out
+            return h + self.feed_forward(self.ffn_norm(h)), kv
+        h = x + self.attention(self.attention_norm(x), cos, sin, mask, past_kv=past_kv)
         return h + self.feed_forward(self.ffn_norm(h))
