@@ -142,6 +142,17 @@ def test_loss_ignores_first_target_token():
     assert torch.allclose(loss_a, loss_b), "Changing only the first target must not change shifted loss"
 
 
+def test_loss_seq_len_one_with_targets_raises():
+    config = ModelConfig()
+    model = MiniLLaMA(config)
+    tokens = torch.randint(0, config.vocab_size, (1, 1))
+    targets = torch.randint(0, config.vocab_size, (1, 1))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with pytest.raises(ValueError, match="sequence length"):
+            model(tokens, targets=targets)
+
+
 def test_loss_uses_shifted_target_tokens():
     config = ModelConfig()
     torch.manual_seed(0)
@@ -169,8 +180,18 @@ def test_start_pos_plus_seq_len_exceeds_max_seq_len_raises():
     tokens = torch.randint(0, config.vocab_size, (1, 4))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        with pytest.raises(AssertionError, match="exceeds max_seq_len"):
+        with pytest.raises(ValueError, match="exceeds max_seq_len"):
             model(tokens, start_pos=14)  # 14 + 4 > 16
+
+
+def test_negative_start_pos_raises():
+    config = ModelConfig(max_seq_len=16)
+    model = MiniLLaMA(config)
+    tokens = torch.randint(0, config.vocab_size, (1, 4))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with pytest.raises(ValueError, match="start_pos must be >= 0"):
+            model(tokens, start_pos=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +207,7 @@ def test_kv_caches_wrong_length_raises():
         prefill = model(tokens, kv_caches=[], start_pos=0)
         bad_kv_caches = prefill["kv_caches"][:1]  # drop one layer's cache
         assert len(bad_kv_caches) != config.n_layers
-        with pytest.raises(AssertionError, match="one entry per layer"):
+        with pytest.raises(ValueError, match="one entry per layer"):
             model(torch.randint(0, config.vocab_size, (1, 1)), kv_caches=bad_kv_caches, start_pos=4)
 
 
@@ -208,16 +229,39 @@ def test_model_forward_batch():
 # ---------------------------------------------------------------------------
 
 def test_config_validation_dim_divisible_by_heads():
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         ModelConfig(dim=128, n_heads=3)
 
 def test_config_validation_heads_divisible_by_kv_heads():
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         ModelConfig(n_heads=4, n_kv_heads=3)
 
 def test_config_validation_hidden_dim_greater_than_dim():
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         ModelConfig(dim=128, hidden_dim=64)
+
+def test_config_validation_n_layers_positive():
+    with pytest.raises(ValueError):
+        ModelConfig(n_layers=0)
+
+def test_config_validation_n_heads_positive():
+    with pytest.raises(ValueError):
+        ModelConfig(n_heads=0)
+
+def test_config_validation_n_kv_heads_positive():
+    with pytest.raises(ValueError):
+        ModelConfig(n_kv_heads=0)
+
+def test_config_validation_head_dim_even():
+    # dim=96, n_heads=32 -> head_dim=3 (odd), also fails divisibility of dim/n_heads? 96/32=3 ok divisible
+    with pytest.raises(ValueError):
+        ModelConfig(dim=96, n_heads=32, n_kv_heads=32, hidden_dim=192)
+
+def test_config_validation_dropout_range():
+    with pytest.raises(ValueError):
+        ModelConfig(dropout=1.0)
+    with pytest.raises(ValueError):
+        ModelConfig(dropout=-0.1)
 
 
 # ---------------------------------------------------------------------------
@@ -239,3 +283,16 @@ def test_load_checkpoint_marks_weights_loaded(tmp_path):
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
         fresh_model(tokens)  # should not warn about random weights
+
+
+@pytest.mark.parametrize("wrapper_key", ["model_state_dict", "state_dict", "model"])
+def test_load_checkpoint_supports_wrapped_formats(tmp_path, wrapper_key):
+    config = ModelConfig()
+    model = MiniLLaMA(config)
+    ckpt_path = tmp_path / "checkpoint.pt"
+    torch.save({wrapper_key: model.state_dict()}, ckpt_path)
+
+    fresh_model = MiniLLaMA(config)
+    assert fresh_model._weights_loaded is False
+    fresh_model.load_checkpoint(str(ckpt_path))
+    assert fresh_model._weights_loaded is True

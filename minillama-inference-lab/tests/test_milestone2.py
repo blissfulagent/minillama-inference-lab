@@ -276,5 +276,15 @@ def test_start_pos_plus_seq_len_exceeds_max_seq_len(model_and_tok):
     tokens = torch.randint(0, model.config.vocab_size, (1, 4))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        with pytest.raises(AssertionError, match="exceeds max_seq_len"):
+        with pytest.raises(ValueError, match="exceeds max_seq_len"):
             model(tokens, start_pos=max_seq_len - 1)
+
+
+def test_prompt_longer_than_max_seq_len_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    max_seq_len = model.config.max_seq_len
+    long_prompt = "a" * (max_seq_len + 10)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with pytest.raises(ValueError, match="max_seq_len"):
+            generate(model, tokenizer, prompt=long_prompt, max_new_tokens=2, greedy=True)

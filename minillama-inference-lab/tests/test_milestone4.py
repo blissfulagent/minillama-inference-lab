@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.inference_service import get_model
 
 
 @pytest.fixture(scope="module")
@@ -69,3 +70,11 @@ def test_generate_invalid_top_k(client):
 def test_generate_invalid_max_new_tokens(client):
     r = client.post("/generate", json={"prompt": "hi", "max_new_tokens": -1})
     assert r.status_code == 422
+
+
+def test_generate_prompt_too_long_returns_422(client):
+    model = get_model()
+    long_prompt = "a" * (model.config.max_seq_len + 10)
+    r = client.post("/generate", json={"prompt": long_prompt, "max_new_tokens": 1})
+    assert r.status_code == 422
+    assert "max_seq_len" in r.json()["detail"]

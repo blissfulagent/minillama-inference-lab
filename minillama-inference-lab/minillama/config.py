@@ -15,8 +15,24 @@ class ModelConfig:
     tie_embeddings: bool = True
 
     def __post_init__(self):
-        assert self.dim % self.n_heads == 0, "dim must be divisible by n_heads"
-        assert self.n_heads % self.n_kv_heads == 0, "n_heads must be divisible by n_kv_heads"
-        assert self.hidden_dim > self.dim, "hidden_dim must be greater than dim"
-        assert self.vocab_size > 0, "vocab_size must be positive"
-        assert self.max_seq_len > 0, "max_seq_len must be positive"
+        if self.n_layers <= 0:
+            raise ValueError(f"n_layers must be > 0, got {self.n_layers}")
+        if self.n_heads <= 0:
+            raise ValueError(f"n_heads must be > 0, got {self.n_heads}")
+        if self.n_kv_heads <= 0:
+            raise ValueError(f"n_kv_heads must be > 0, got {self.n_kv_heads}")
+        if self.dim % self.n_heads != 0:
+            raise ValueError("dim must be divisible by n_heads")
+        if self.n_heads % self.n_kv_heads != 0:
+            raise ValueError("n_heads must be divisible by n_kv_heads")
+        head_dim = self.dim // self.n_heads
+        if head_dim % 2 != 0:
+            raise ValueError(f"head_dim (dim // n_heads = {head_dim}) must be even for RoPE")
+        if self.hidden_dim <= self.dim:
+            raise ValueError("hidden_dim must be greater than dim")
+        if self.vocab_size <= 0:
+            raise ValueError("vocab_size must be positive")
+        if self.max_seq_len <= 0:
+            raise ValueError("max_seq_len must be positive")
+        if not (0.0 <= self.dropout < 1.0):
+            raise ValueError(f"dropout must be in [0.0, 1.0), got {self.dropout}")

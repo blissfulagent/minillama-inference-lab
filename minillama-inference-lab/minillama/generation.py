@@ -101,16 +101,12 @@ def generate(
     prompt_ids = tokenizer.encode(prompt)
     max_seq_len = model.config.max_seq_len
 
+    if len(prompt_ids) > max_seq_len:
+        raise ValueError(
+            f"encoded prompt length ({len(prompt_ids)}) exceeds max_seq_len ({max_seq_len})"
+        )
+
     available = max_seq_len - len(prompt_ids)
-    if available <= 0:
-        return {
-            "text": prompt,
-            "token_ids": prompt_ids,
-            "tokens_generated": 0,
-            "latency_ms": 0.0,
-            "tokens_per_second": 0.0,
-            "used_kv_cache": use_kv_cache,
-        }
 
     if max_new_tokens > available:
         warnings.warn(

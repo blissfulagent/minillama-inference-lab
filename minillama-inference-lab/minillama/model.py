@@ -34,7 +34,13 @@ class MiniLLaMA(nn.Module):
         self._weights_loaded = True
 
     def load_checkpoint(self, path: str, map_location: str | torch.device = "cpu") -> None:
-        state_dict = torch.load(path, map_location=map_location)
+        checkpoint = torch.load(path, map_location=map_location)
+        if isinstance(checkpoint, dict):
+            for key in ("model_state_dict", "state_dict", "model"):
+                if key in checkpoint:
+                    checkpoint = checkpoint[key]
+                    break
+        state_dict = checkpoint
         self.load_state_dict(state_dict)
         self.mark_weights_loaded()
 
@@ -53,17 +59,21 @@ class MiniLLaMA(nn.Module):
             self._warned_random = True
 
         B, T = tokens.shape
-        assert start_pos + T <= self.config.max_seq_len, (
-            f"start_pos ({start_pos}) + seq_len ({T}) exceeds max_seq_len "
-            f"({self.config.max_seq_len})"
-        )
+        if start_pos < 0:
+            raise ValueError(f"start_pos must be >= 0, got {start_pos}")
+        if start_pos + T > self.config.max_seq_len:
+            raise ValueError(
+                f"start_pos ({start_pos}) + seq_len ({T}) exceeds max_seq_len "
+                f"({self.config.max_seq_len})"
+            )
 
         use_kv = kv_caches is not None
         if use_kv and len(kv_caches) > 0:
-            assert len(kv_caches) == len(self.layers), (
-                f"kv_caches must have exactly one entry per layer "
-                f"({len(self.layers)}), got {len(kv_caches)}"
-            )
+            if len(kv_caches) != len(self.layers):
+                raise ValueError(
+                    f"kv_caches must have exactly one entry per layer "
+                    f"({len(self.layers)}), got {len(kv_caches)}"
+                )
             past_len = kv_caches[0][0].shape[2]
         else:
             past_len = 0
@@ -98,6 +108,11 @@ class MiniLLaMA(nn.Module):
 
         loss = None
         if targets is not None:
+            if T < 2:
+                raise ValueError(
+                    f"targets provided but sequence length ({T}) < 2; "
+                    "shifted next-token loss requires at least 2 tokens"
+                )
             # Next-token prediction: logits[:, :-1] predicts targets[:, 1:]
             shift_logits = logits[:, :-1, :]
             shift_targets = targets[:, 1:]

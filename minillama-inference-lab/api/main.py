@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from .inference_service import get_model, get_tokenizer, load_model_and_tokenizer
 from .schemas import GenerateRequest, GenerateResponse, HealthResponse, ModelInfoResponse
@@ -48,18 +48,21 @@ def generate_text(request: GenerateRequest):
     model = get_model()
     tokenizer = get_tokenizer()
 
-    result = generate(
-        model=model,
-        tokenizer=tokenizer,
-        prompt=request.prompt,
-        max_new_tokens=request.max_new_tokens,
-        greedy=request.greedy,
-        temperature=request.temperature,
-        top_k=request.top_k,
-        top_p=request.top_p,
-        repetition_penalty=request.repetition_penalty,
-        use_kv_cache=request.use_kv_cache,
-    )
+    try:
+        result = generate(
+            model=model,
+            tokenizer=tokenizer,
+            prompt=request.prompt,
+            max_new_tokens=request.max_new_tokens,
+            greedy=request.greedy,
+            temperature=request.temperature,
+            top_k=request.top_k,
+            top_p=request.top_p,
+            repetition_penalty=request.repetition_penalty,
+            use_kv_cache=request.use_kv_cache,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     return GenerateResponse(
         text=result["text"],
