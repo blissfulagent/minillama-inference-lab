@@ -1,7 +1,4 @@
-import sys
 import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from minillama.config import ModelConfig
 from minillama.model import MiniLLaMA
@@ -15,6 +12,9 @@ def load_model_and_tokenizer() -> None:
     global _model, _tokenizer
     config = ModelConfig()
     _model = MiniLLaMA(config)
+    checkpoint_path = os.environ.get("MINILLAMA_CHECKPOINT_PATH")
+    if checkpoint_path:
+        _model.load_checkpoint(checkpoint_path)
     _model.eval()
     _tokenizer = ByteTokenizer()
 

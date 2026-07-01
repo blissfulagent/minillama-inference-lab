@@ -1,10 +1,7 @@
 import json
 import os
 import statistics
-import sys
 import warnings
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from minillama.config import ModelConfig
 from minillama.model import MiniLLaMA

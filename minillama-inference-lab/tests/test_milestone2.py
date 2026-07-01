@@ -205,3 +205,76 @@ def test_repetition_penalty_generation(model_and_tok):
         result = generate(model, tokenizer, prompt="hi", max_new_tokens=4,
                           greedy=False, temperature=1.0, repetition_penalty=1.3)
     assert result["tokens_generated"] == 4
+
+
+# ── Input validation ────────────────────────────────────────────────────────
+
+def test_empty_prompt_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    with pytest.raises(ValueError, match="prompt"):
+        generate(model, tokenizer, prompt="", max_new_tokens=2, greedy=True)
+
+
+def test_negative_max_new_tokens_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    with pytest.raises(ValueError, match="max_new_tokens"):
+        generate(model, tokenizer, prompt="hi", max_new_tokens=-1, greedy=True)
+
+
+def test_invalid_top_p_too_high_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    with pytest.raises(ValueError, match="top_p"):
+        generate(model, tokenizer, prompt="hi", max_new_tokens=2, top_p=1.5)
+
+
+def test_invalid_top_p_zero_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    with pytest.raises(ValueError, match="top_p"):
+        generate(model, tokenizer, prompt="hi", max_new_tokens=2, top_p=0.0)
+
+
+def test_invalid_top_k_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    with pytest.raises(ValueError, match="top_k"):
+        generate(model, tokenizer, prompt="hi", max_new_tokens=2, top_k=-1)
+
+
+def test_invalid_repetition_penalty_raises(model_and_tok):
+    model, tokenizer = model_and_tok
+    with pytest.raises(ValueError, match="repetition_penalty"):
+        generate(model, tokenizer, prompt="hi", max_new_tokens=2, repetition_penalty=0.5)
+
+
+# ── Device awareness ─────────────────────────────────────────────────────────
+
+def test_generate_respects_model_device(model_and_tok):
+    model, tokenizer = model_and_tok
+    model.to("cpu")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        result = generate(model, tokenizer, prompt="hi", max_new_tokens=2, greedy=True)
+    assert isinstance(result["text"], str)
+    assert result["tokens_generated"] == 2
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_generate_on_cuda_device(model_and_tok):
+    model, tokenizer = model_and_tok
+    model.to("cuda")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        result = generate(model, tokenizer, prompt="hi", max_new_tokens=2,
+                          greedy=True, use_kv_cache=True)
+    assert result["tokens_generated"] == 2
+
+
+# ── Sequence-limit validation ────────────────────────────────────────────────
+
+def test_start_pos_plus_seq_len_exceeds_max_seq_len(model_and_tok):
+    model, tokenizer = model_and_tok
+    max_seq_len = model.config.max_seq_len
+    tokens = torch.randint(0, model.config.vocab_size, (1, 4))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with pytest.raises(AssertionError, match="exceeds max_seq_len"):
+            model(tokens, start_pos=max_seq_len - 1)

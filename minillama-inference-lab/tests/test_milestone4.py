@@ -54,3 +54,18 @@ def test_generate_invalid_top_p(client):
 def test_generate_invalid_repetition_penalty(client):
     r = client.post("/generate", json={"prompt": "hi", "repetition_penalty": 0.5})
     assert r.status_code == 422
+
+
+def test_generate_empty_prompt(client):
+    r = client.post("/generate", json={"prompt": ""})
+    assert r.status_code == 422
+
+
+def test_generate_invalid_top_k(client):
+    r = client.post("/generate", json={"prompt": "hi", "top_k": -1})
+    assert r.status_code == 422
+
+
+def test_generate_invalid_max_new_tokens(client):
+    r = client.post("/generate", json={"prompt": "hi", "max_new_tokens": -1})
+    assert r.status_code == 422

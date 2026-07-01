@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class GenerateRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(min_length=1)
     max_new_tokens: int = Field(default=32, ge=0, le=128)
     greedy: bool = False
     temperature: float = Field(default=1.0, gt=0.0)

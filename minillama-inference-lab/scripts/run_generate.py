@@ -1,8 +1,4 @@
 import argparse
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from minillama.config import ModelConfig
 from minillama.model import MiniLLaMA
@@ -20,10 +16,13 @@ def main():
     parser.add_argument("--top_p", type=float, default=1.0, help="Top-p nucleus filtering (1.0 = disabled)")
     parser.add_argument("--repetition_penalty", type=float, default=1.0, help="Repetition penalty (1.0 = none)")
     parser.add_argument("--use_kv_cache", action="store_true", help="Enable KV cache for faster inference")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Path to a trained state_dict checkpoint")
     args = parser.parse_args()
 
     config = ModelConfig()
     model = MiniLLaMA(config)
+    if args.checkpoint:
+        model.load_checkpoint(args.checkpoint)
     tokenizer = ByteTokenizer()
 
     result = generate(

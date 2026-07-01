@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minillama-inference-lab"
+version = "0.1.0"
+description = "CPU-first LLaMA-style decoder-only Transformer inference lab"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+minillama-generate = "scripts.run_generate:main"
+
+[tool.setuptools]
+packages = ["minillama", "api", "scripts", "benchmarks"]

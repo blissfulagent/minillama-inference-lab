@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 import torch
 
@@ -118,6 +120,77 @@ def test_model_forward_with_loss():
 
 
 # ---------------------------------------------------------------------------
+# Model — shifted next-token loss
+# ---------------------------------------------------------------------------
+
+def test_loss_ignores_first_target_token():
+    # logits[:, :-1] predicts targets[:, 1:], so the first target position
+    # (nothing precedes it to predict it) is never used by the loss.
+    config = ModelConfig()
+    torch.manual_seed(0)
+    model = MiniLLaMA(config)
+    tokens = torch.randint(0, config.vocab_size, (1, 8))
+    targets_a = torch.randint(0, config.vocab_size, (1, 8))
+    targets_b = targets_a.clone()
+    targets_b[0, 0] = (targets_b[0, 0] + 1) % config.vocab_size
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        loss_a = model(tokens, targets=targets_a)["loss"]
+        loss_b = model(tokens, targets=targets_b)["loss"]
+
+    assert torch.allclose(loss_a, loss_b), "Changing only the first target must not change shifted loss"
+
+
+def test_loss_uses_shifted_target_tokens():
+    config = ModelConfig()
+    torch.manual_seed(0)
+    model = MiniLLaMA(config)
+    tokens = torch.randint(0, config.vocab_size, (1, 8))
+    targets_a = torch.randint(0, config.vocab_size, (1, 8))
+    targets_c = targets_a.clone()
+    targets_c[0, 1] = (targets_c[0, 1] + 1) % config.vocab_size
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        loss_a = model(tokens, targets=targets_a)["loss"]
+        loss_c = model(tokens, targets=targets_c)["loss"]
+
+    assert not torch.allclose(loss_a, loss_c), "Changing a used target position should change the loss"
+
+
+# ---------------------------------------------------------------------------
+# Model — sequence-limit validation
+# ---------------------------------------------------------------------------
+
+def test_start_pos_plus_seq_len_exceeds_max_seq_len_raises():
+    config = ModelConfig(max_seq_len=16)
+    model = MiniLLaMA(config)
+    tokens = torch.randint(0, config.vocab_size, (1, 4))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with pytest.raises(AssertionError, match="exceeds max_seq_len"):
+            model(tokens, start_pos=14)  # 14 + 4 > 16
+
+
+# ---------------------------------------------------------------------------
+# Model — malformed kv_caches length
+# ---------------------------------------------------------------------------
+
+def test_kv_caches_wrong_length_raises():
+    config = ModelConfig(n_layers=2)
+    model = MiniLLaMA(config)
+    tokens = torch.randint(0, config.vocab_size, (1, 4))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        prefill = model(tokens, kv_caches=[], start_pos=0)
+        bad_kv_caches = prefill["kv_caches"][:1]  # drop one layer's cache
+        assert len(bad_kv_caches) != config.n_layers
+        with pytest.raises(AssertionError, match="one entry per layer"):
+            model(torch.randint(0, config.vocab_size, (1, 1)), kv_caches=bad_kv_caches, start_pos=4)
+
+
+# ---------------------------------------------------------------------------
 # Model — causal mask sanity
 # ---------------------------------------------------------------------------
 
@@ -145,3 +218,24 @@ def test_config_validation_heads_divisible_by_kv_heads():
 def test_config_validation_hidden_dim_greater_than_dim():
     with pytest.raises(AssertionError):
         ModelConfig(dim=128, hidden_dim=64)
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint loading
+# ---------------------------------------------------------------------------
+
+def test_load_checkpoint_marks_weights_loaded(tmp_path):
+    config = ModelConfig()
+    model = MiniLLaMA(config)
+    ckpt_path = tmp_path / "checkpoint.pt"
+    torch.save(model.state_dict(), ckpt_path)
+
+    fresh_model = MiniLLaMA(config)
+    assert fresh_model._weights_loaded is False
+    fresh_model.load_checkpoint(str(ckpt_path))
+    assert fresh_model._weights_loaded is True
+
+    tokens = torch.randint(0, config.vocab_size, (1, 4))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        fresh_model(tokens)  # should not warn about random weights

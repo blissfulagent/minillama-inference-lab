@@ -33,6 +33,11 @@ class MiniLLaMA(nn.Module):
     def mark_weights_loaded(self):
         self._weights_loaded = True
 
+    def load_checkpoint(self, path: str, map_location: str | torch.device = "cpu") -> None:
+        state_dict = torch.load(path, map_location=map_location)
+        self.load_state_dict(state_dict)
+        self.mark_weights_loaded()
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -48,7 +53,20 @@ class MiniLLaMA(nn.Module):
             self._warned_random = True
 
         B, T = tokens.shape
-        assert T <= self.config.max_seq_len, f"Sequence length {T} exceeds max_seq_len {self.config.max_seq_len}"
+        assert start_pos + T <= self.config.max_seq_len, (
+            f"start_pos ({start_pos}) + seq_len ({T}) exceeds max_seq_len "
+            f"({self.config.max_seq_len})"
+        )
+
+        use_kv = kv_caches is not None
+        if use_kv and len(kv_caches) > 0:
+            assert len(kv_caches) == len(self.layers), (
+                f"kv_caches must have exactly one entry per layer "
+                f"({len(self.layers)}), got {len(kv_caches)}"
+            )
+            past_len = kv_caches[0][0].shape[2]
+        else:
+            past_len = 0
 
         x = self.tok_embeddings(tokens)  # [B, T, dim]
 
@@ -56,14 +74,15 @@ class MiniLLaMA(nn.Module):
         cos = self.rope_cos[start_pos : start_pos + T]  # [T, head_dim//2]
         sin = self.rope_sin[start_pos : start_pos + T]
 
-        # Causal mask for multi-token prefill; single-token decode needs no mask
+        # Causal mask over [new_T, past_len + new_T]; row i (new token) may attend to
+        # keys 0..past_len+i inclusive. Single-token decode with no past needs no mask.
         if T > 1:
-            mask = torch.full((1, 1, T, T), float("-inf"), device=x.device, dtype=x.dtype)
-            mask = torch.tril(torch.zeros_like(mask)) + torch.triu(mask, diagonal=1)
+            total = past_len + T
+            mask = torch.full((1, 1, T, total), float("-inf"), device=x.device, dtype=x.dtype)
+            mask = torch.triu(mask, diagonal=past_len + 1)
         else:
             mask = None
 
-        use_kv = kv_caches is not None
         new_kv_caches: list | None = [] if use_kv else None
 
         for i, layer in enumerate(self.layers):
@@ -79,9 +98,12 @@ class MiniLLaMA(nn.Module):
 
         loss = None
         if targets is not None:
+            # Next-token prediction: logits[:, :-1] predicts targets[:, 1:]
+            shift_logits = logits[:, :-1, :]
+            shift_targets = targets[:, 1:]
             loss = F.cross_entropy(
-                logits.reshape(-1, self.config.vocab_size),
-                targets.reshape(-1).long(),
+                shift_logits.reshape(-1, self.config.vocab_size),
+                shift_targets.reshape(-1).long(),
             )
 
         return {"logits": logits, "loss": loss, "kv_caches": new_kv_caches}

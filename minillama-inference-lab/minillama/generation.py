@@ -75,8 +75,18 @@ def generate(
     repetition_penalty: float = 1.0,
     use_kv_cache: bool = False,
 ) -> dict:
+    if not prompt:
+        raise ValueError("prompt must not be empty")
+    if max_new_tokens < 0:
+        raise ValueError(f"max_new_tokens must be >= 0, got {max_new_tokens}")
     if temperature <= 0.0:
         raise ValueError(f"temperature must be > 0, got {temperature}")
+    if not (0.0 < top_p <= 1.0):
+        raise ValueError(f"top_p must be in (0, 1], got {top_p}")
+    if top_k < 0:
+        raise ValueError(f"top_k must be >= 0, got {top_k}")
+    if repetition_penalty < 1.0:
+        raise ValueError(f"repetition_penalty must be >= 1, got {repetition_penalty}")
 
     if not model._weights_loaded:
         warnings.warn(
@@ -161,9 +171,10 @@ def _generate_no_cache(
     greedy, temperature, top_k, top_p, repetition_penalty,
     generated_ids,
 ):
+    device = next(model.parameters()).device
     current_ids = list(prompt_ids)
     for _ in range(max_new_tokens):
-        tokens = torch.tensor([current_ids], dtype=torch.long)
+        tokens = torch.tensor([current_ids], dtype=torch.long, device=device)
         out = model(tokens)
         logits = out["logits"][0, -1, :].clone()  # [vocab_size]
 
@@ -180,8 +191,10 @@ def _generate_kv_cache(
     greedy, temperature, top_k, top_p, repetition_penalty,
     generated_ids,
 ):
+    device = next(model.parameters()).device
+
     # Prefill: run full prompt, collect KV caches
-    prompt_tensor = torch.tensor([prompt_ids], dtype=torch.long)
+    prompt_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     out = model(prompt_tensor, kv_caches=[], start_pos=0)
     kv_caches = out["kv_caches"]
 
@@ -194,7 +207,7 @@ def _generate_kv_cache(
 
     # Decode: one token at a time
     for step in range(1, max_new_tokens):
-        token_tensor = torch.tensor([[next_id]], dtype=torch.long)
+        token_tensor = torch.tensor([[next_id]], dtype=torch.long, device=device)
         start_pos = prompt_len + step - 1
         out = model(token_tensor, kv_caches=kv_caches, start_pos=start_pos)
         kv_caches = out["kv_caches"]
